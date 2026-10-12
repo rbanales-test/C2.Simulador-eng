@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Synthesizer Waveform and Noise Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --focus-color: #16fdfc;
+        }
+        body {
+            background-color: #111827; /* Tailwind gray-900 */
+            color: #f3f4f6; /* Tailwind gray-100 */
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        /* Universal high-contrast focus ring for accessibility */
+        :focus-visible {
+            outline: 3px solid var(--focus-color);
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+        
+        canvas {
+            background-color: #1f2937; /* Tailwind gray-800 */
+            border: 1px solid #374151;
+            border-radius: 0.5rem;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Custom range slider styling for cross-browser consistency */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -8px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #4b5563;
+            border-radius: 2px;
+        }
+        input[type=range]:focus::-webkit-slider-thumb {
+            outline: 3px solid var(--focus-color);
+            outline-offset: 2px;
+        }
+        
+        .disabled-control {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <header class="w-full max-w-5xl mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-center text-blue-400">Basic Synthesizer Waveform & Noise Generator</h1>
+        <p class="text-center text-gray-400 text-sm max-w-3xl mx-auto">
+            Explore how raw electronic audio signals are created and shaped by analyzing time-domain and frequency-domain visuals.
+        </p>
+    </header>
+
+    <main class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <section aria-labelledby="controls-heading" class="lg:col-span-5 bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+            <h2 id="controls-heading" class="sr-only">Synthesizer Controls</h2>
+            
+            <!-- Global Engine Controls -->
+            <div class="mb-8 flex justify-between gap-4">
+                <button id="btn-start" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-lg transition-colors" tabindex="0">
+                    Start Audio Engine
+                </button>
+                <button id="btn-stop" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-4 rounded-lg transition-colors" tabindex="0">
+                    Stop Audio Engine
+                </button>
+            </div>
+            
+            <div id="engine-status" class="text-center text-sm font-bold mb-6 text-red-400" aria-live="polite">
+                Audio Engine Offline
+            </div>
+
+            <!-- Sound Source Toggle -->
+            <fieldset class="mb-6">
+                <legend class="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Sound Source</legend>
+                <div role="radiogroup" aria-label="Sound Source" class="flex gap-2 bg-gray-900 p-1 rounded-lg">
+                    <button role="radio" aria-checked="true" data-source="oscillator" class="source-toggle flex-1 py-2 text-sm font-medium rounded-md bg-blue-600 text-white transition-colors" tabindex="0">
+                        Oscillator
+                    </button>
+                    <button role="radio" aria-checked="false" data-source="noise" class="source-toggle flex-1 py-2 text-sm font-medium rounded-md text-gray-400 hover:text-white transition-colors" tabindex="0">
+                        Noise Generator
+                    </button>
+                </div>
+            </fieldset>
+
+            <!-- Oscillator Controls -->
+            <div id="panel-oscillator" class="space-y-6">
+                <fieldset>
+                    <legend class="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Waveform</legend>
+                    <div role="radiogroup" aria-label="Waveform Type" class="grid grid-cols-2 gap-2">
+                        <button role="radio" aria-checked="true" data-wave="sine" class="wave-toggle py-2 text-sm font-medium rounded bg-blue-600 text-white border border-gray-700 transition-colors" tabindex="0">Sine</button>
+                        <button role="radio" aria-checked="false" data-wave="sawtooth" class="wave-toggle py-2 text-sm font-medium rounded bg-gray-700 text-gray-300 border border-gray-700 hover:bg-gray-600 transition-colors" tabindex="0">Sawtooth</button>
+                        <button role="radio" aria-checked="false" data-wave="square" class="wave-toggle py-2 text-sm font-medium rounded bg-gray-700 text-gray-300 border border-gray-700 hover:bg-gray-600 transition-colors" tabindex="0">Square (PWM)</button>
+                        <button role="radio" aria-checked="false" data-wave="triangle" class="wave-toggle py-2 text-sm font-medium rounded bg-gray-700 text-gray-300 border border-gray-700 hover:bg-gray-600 transition-colors" tabindex="0">Triangle</button>
+                    </div>
+                </fieldset>
+
+                <div>
+                    <label for="pitch-slider" class="flex justify-between text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                        <span>Fundamental Pitch</span>
+                        <span id="pitch-display">440 Hz</span>
+                    </label>
+                    <input type="range" id="pitch-slider" min="65" max="880" value="440" step="1"
+                           role="slider" aria-label="Fundamental Pitch" aria-valuemin="65" aria-valuemax="880" aria-valuenow="440" tabindex="0">
+                </div>
+
+                <div id="pwm-container" class="disabled-control transition-opacity duration-300">
+                    <label for="pwm-slider" class="flex justify-between text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">
+                        <span>Pulse Width (Square only)</span>
+                        <span id="pwm-display">50%</span>
+                    </label>
+                    <input type="range" id="pwm-slider" min="5" max="95" value="50" step="1"
+                           role="slider" aria-label="Pulse Width" aria-valuemin="5" aria-valuemax="95" aria-valuenow="50" tabindex="0">
+                </div>
+            </div>
+
+            <!-- Noise Controls -->
+            <div id="panel-noise" class="hidden space-y-6 mt-6 border-t border-gray-700 pt-6">
+                <fieldset>
+                    <legend class="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Noise Type</legend>
+                    <div role="radiogroup" aria-label="Noise Type" class="grid grid-cols-3 gap-2">
+                        <button role="radio" aria-checked="true" data-noise="white" class="noise-toggle py-2 text-sm font-medium rounded bg-blue-600 text-white border border-gray-700 transition-colors" tabindex="0">White</button>
+                        <button role="radio" aria-checked="false" data-noise="pink" class="noise-toggle py-2 text-sm font-medium rounded bg-gray-700 text-gray-300 border border-gray-700 hover:bg-gray-600 transition-colors" tabindex="0">Pink</button>
+                        <button role="radio" aria-checked="false" data-noise="brown" class="noise-toggle py-2 text-sm font-medium rounded bg-gray-700 text-gray-300 border border-gray-700 hover:bg-gray-600 transition-colors" tabindex="0">Brown</button>
+                    </div>
+                </fieldset>
+            </div>
+            
+        </section>
+
+        <section aria-labelledby="visuals-heading" class="lg:col-span-7 flex flex-col gap-6">
+            <h2 id="visuals-heading" class="sr-only">Audio Visualizers</h2>
+            
+            <!-- Oscilloscope -->
+            <div class="flex-1 bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-700 flex flex-col min-h-[250px]">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Oscilloscope (Time-Domain)</h3>
+                <div class="relative flex-1">
+                    <canvas id="canvas-oscilloscope"></canvas>
+                </div>
+            </div>
+
+            <!-- Spectrum Analyzer -->
+            <div class="flex-1 bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-700 flex flex-col min-h-[250px]">
+                <h3 class="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wide">Spectrum Analyzer (Frequency-Domain FFT)</h3>
+                <div class="relative flex-1">
+                    <canvas id="canvas-spectrum"></canvas>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="aria-live-region" aria-live="polite" class="sr-only">
+        Synthesizer loaded. Audio engine is currently offline.
+    </div>
+
+    <script>
+        // Application State
+        const AppState = {
+            isPlaying: false,
+            source: 'oscillator', // 'oscillator' | 'noise'
+            wave: 'sine',         // 'sine' | 'sawtooth' | 'square' | 'triangle'
+            noise: 'white',       // 'white' | 'pink' | 'brown'
+            pitch: 440,
+            pwm: 50
+        };
+
+        // Audio Context & Nodes
+        let audioCtx = null;
+        let masterGain = null;
+        let analyser = null;
+        let currentSourceNode = null;
+        let pwmWaveShaper = null;
+        let noiseBuffers = {};
+
+        // DOM Elements
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const statusDisplay = document.getElementById('engine-status');
+        const sourceToggles = document.querySelectorAll('.source-toggle');
+        const waveToggles = document.querySelectorAll('.wave-toggle');
+        const noiseToggles = document.querySelectorAll('.noise-toggle');
+        
+        const pitchSlider = document.getElementById('pitch-slider');
+        const pitchDisplay = document.getElementById('pitch-display');
+        
+        const pwmSlider = document.getElementById('pwm-slider');
+        const pwmDisplay = document.getElementById('pwm-display');
+        const pwmContainer = document.getElementById('pwm-container');
+        
+        const panelOsc = document.getElementById('panel-oscillator');
+        const panelNoise = document.getElementById('panel-noise');
+        
+        const canvasOsc = document.getElementById('canvas-oscilloscope');
+        const canvasSpec = document.getElementById('canvas-spectrum');
+        const ctxOsc = canvasOsc.getContext('2d');
+        const ctxSpec = canvasSpec.getContext('2d');
+        const ariaLiveRegion = document.getElementById('aria-live-region');
+
+        // Animation Request ID
+        let animFrameId = null;
+
+        // Pre-generate noise buffers to save CPU and handle clean playback
+        function generateNoiseBuffers(context) {
+            const bufferSize = context.sampleRate * 2; // 2 seconds looping buffer
+            
+            // White Noise
+            const whiteBuffer = context.createBuffer(1, bufferSize, context.sampleRate);
+            const whiteData = whiteBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                whiteData[i] = Math.random() * 2 - 1;
+            }
+            noiseBuffers['white'] = whiteBuffer;
+
+            // Pink Noise (Paul Kellet's algorithm)
+            const pinkBuffer = context.createBuffer(1, bufferSize, context.sampleRate);
+            const pinkData = pinkBuffer.getChannelData(0);
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99886 * b0 + white * 0.0555179;
+                b1 = 0.99332 * b1 + white * 0.0750759;
+                b2 = 0.96900 * b2 + white * 0.1538520;
+                b3 = 0.86650 * b3 + white * 0.3104856;
+                b4 = 0.55000 * b4 + white * 0.5329522;
+                b5 = -0.7616 * b5 - white * 0.0168980;
+                pinkData[i] = b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362;
+                pinkData[i] *= 0.11; // Gain compensation
+                b6 = white * 0.115926;
+            }
+            noiseBuffers['pink'] = pinkBuffer;
+
+            // Brown Noise (Integration)
+            const brownBuffer = context.createBuffer(1, bufferSize, context.sampleRate);
+            const brownData = brownBuffer.getChannelData(0);
+            let lastOut = 0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                let out = (lastOut + (0.02 * white)) / 1.02;
+                lastOut = out;
+                brownData[i] = out * 3.5; // Gain compensation
+            }
+            noiseBuffers['brown'] = brownBuffer;
+        }
+
+        // Generates a transfer curve for the WaveShaper to convert a Sawtooth to a variable Pulse Wave
+        function getPulseCurve(dutyCycle) {
+            const curveLength = 1024;
+            const curve = new Float32Array(curveLength);
+            // dutyCycle is between 0.05 and 0.95
+            // WaveShaper input is -1 to 1 (sawtooth)
+            // We want output to be 1 for a fraction of the cycle, and -1 for the rest.
+            const threshold = (dutyCycle * 2) - 1; 
+            
+            for (let i = 0; i < curveLength; i++) {
+                const x = (i * 2 / curveLength) - 1;
+                curve[i] = x < threshold ? 1 : -1;
+            }
+            return curve;
+        }
+
+        function initAudio() {
+            if (audioCtx) return;
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Master Gain Node - starts at 0 to prevent initial clicks
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0;
+            
+            // Analyser Node
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048; // Good resolution for frequency and time domains
+            
+            // Connect Graph: Source(s) -> MasterGain -> Analyser -> Destination
+            masterGain.connect(analyser);
+            analyser.connect(audioCtx.destination);
+            
+            generateNoiseBuffers(audioCtx);
+            
+            // Reusable Waveshaper for PWM
+            pwmWaveShaper = audioCtx.createWaveShaper();
+            pwmWaveShaper.curve = getPulseCurve(AppState.pwm / 100);
+        }
+
+        function buildSource() {
+            // Clean up existing node strictly
+            if (currentSourceNode) {
+                try {
+                    currentSourceNode.stop();
+                    currentSourceNode.disconnect();
+                } catch (e) { /* Ignore standard DOM exceptions if already stopped */ }
+                currentSourceNode = null;
+            }
+            
+            try { pwmWaveShaper.disconnect(); } catch(e) {}
+
+            if (AppState.source === 'oscillator') {
+                currentSourceNode = audioCtx.createOscillator();
+                currentSourceNode.frequency.value = AppState.pitch;
+                
+                if (AppState.wave === 'square') {
+                    // For adjustable PWM, we use a Sawtooth fed into a WaveShaper
+                    currentSourceNode.type = 'sawtooth';
+                    pwmWaveShaper.curve = getPulseCurve(AppState.pwm / 100);
+                    currentSourceNode.connect(pwmWaveShaper);
+                    pwmWaveShaper.connect(masterGain);
+                } else {
+                    currentSourceNode.type = AppState.wave;
+                    currentSourceNode.connect(masterGain);
+                }
+                
+                currentSourceNode.start();
+            } 
+            else if (AppState.source === 'noise') {
+                currentSourceNode = audioCtx.createBufferSource();
+                currentSourceNode.buffer = noiseBuffers[AppState.noise];
+                currentSourceNode.loop = true;
+                currentSourceNode.connect(masterGain);
+                currentSourceNode.start();
+            }
+        }
+
+        async function startEngine() {
+            initAudio();
+            
+            // Ensure audio context is running (autoplay policy satisfaction)
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            
+            if (!AppState.isPlaying) {
+                buildSource();
+                AppState.isPlaying = true;
+                
+                // Ramp gain up smoothly to avoid clicks
+                masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+                masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+                masterGain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.05); // 0.3 overall volume
+                
+                updateUIStatus();
+                if(!animFrameId) drawVisualizers();
+                updateLiveRegion(`Audio Engine started. Playing ${getActiveDescription()}.`);
+            }
+        }
+
+        async function stopEngine() {
+            if (!audioCtx || !AppState.isPlaying) return;
+            
+            AppState.isPlaying = false;
+            
+            // Strict Rule: Ramp down gain to 0 over 50ms before suspending to prevent clicks
+            masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+            masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+            masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.05);
+            
+            // Delay the suspend slightly to allow the ramp to finish
+            setTimeout(async () => {
+                if (audioCtx.state === 'running' && !AppState.isPlaying) {
+                    await audioCtx.suspend(); // NEVER call close()
+                    updateUIStatus();
+                    updateLiveRegion("Audio Engine stopped.");
+                }
+            }, 60);
+        }
+
+        function restartSourceIfPlaying() {
+            if (AppState.isPlaying && audioCtx && audioCtx.state === 'running') {
+                buildSource();
+                updateLiveRegion(`Changed source to ${getActiveDescription()}.`);
+            }
+        }
+
+        function updateRadiogroup(buttons, activeValue, datasetKey) {
+            buttons.forEach(btn => {
+                const isActive = btn.dataset[datasetKey] === activeValue;
+                btn.setAttribute('aria-checked', isActive.toString());
+                
+                if (isActive) {
+                    btn.classList.replace('bg-gray-700', 'bg-blue-600');
+                    btn.classList.replace('text-gray-300', 'text-white');
+                    btn.classList.remove('hover:bg-gray-600', 'hover:text-white');
+                } else {
+                    btn.classList.replace('bg-blue-600', 'bg-gray-700');
+                    btn.classList.replace('text-white', 'text-gray-300');
+                    btn.classList.add('hover:bg-gray-600');
+                }
+            });
+        }
+
+        sourceToggles.forEach(btn => btn.addEventListener('click', (e) => {
+            AppState.source = e.target.dataset.source;
+            updateRadiogroup(sourceToggles, AppState.source, 'source');
+            
+            if (AppState.source === 'oscillator') {
+                panelOsc.classList.remove('hidden');
+                panelNoise.classList.add('hidden');
+            } else {
+                panelOsc.classList.add('hidden');
+                panelNoise.classList.remove('hidden');
+            }
+            restartSourceIfPlaying();
+        }));
+
+        waveToggles.forEach(btn => btn.addEventListener('click', (e) => {
+            AppState.wave = e.target.dataset.wave;
+            updateRadiogroup(waveToggles, AppState.wave, 'wave');
+            
+            if (AppState.wave === 'square') {
+                pwmContainer.classList.remove('disabled-control');
+                pwmSlider.removeAttribute('disabled');
+            } else {
+                pwmContainer.classList.add('disabled-control');
+                pwmSlider.setAttribute('disabled', 'true');
+            }
+            restartSourceIfPlaying();
+        }));
+
+        noiseToggles.forEach(btn => btn.addEventListener('click', (e) => {
+            AppState.noise = e.target.dataset.noise;
+            updateRadiogroup(noiseToggles, AppState.noise, 'noise');
+            restartSourceIfPlaying();
+        }));
+
+        // Realtime Parameter Sliders
+        pitchSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            AppState.pitch = Number(val);
+            pitchDisplay.textContent = `${val} Hz`;
+            pitchSlider.setAttribute('aria-valuenow', val);
+            
+            if (AppState.isPlaying && AppState.source === 'oscillator' && currentSourceNode) {
+                // If using the square/PWM hack, it's a sawtooth node internally
+                currentSourceNode.frequency.setTargetAtTime(AppState.pitch, audioCtx.currentTime, 0.015);
+            }
+        });
+
+        // Debounce live region for pitch so we don't spam screen readers
+        let pitchDebounce;
+        pitchSlider.addEventListener('change', () => {
+            clearTimeout(pitchDebounce);
+            pitchDebounce = setTimeout(() => {
+                updateLiveRegion(`Pitch set to ${AppState.pitch} Hertz.`);
+            }, 500);
+        });
+
+        pwmSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            AppState.pwm = Number(val);
+            pwmDisplay.textContent = `${val}%`;
+            pwmSlider.setAttribute('aria-valuenow', val);
+            
+            if (AppState.isPlaying && AppState.source === 'oscillator' && AppState.wave === 'square') {
+                // Update WaveShaper curve immediately
+                pwmWaveShaper.curve = getPulseCurve(AppState.pwm / 100);
+            }
+        });
+
+        pwmSlider.addEventListener('change', () => {
+             updateLiveRegion(`Pulse width set to ${AppState.pwm} percent.`);
+        });
+
+        btnStart.addEventListener('click', startEngine);
+        btnStop.addEventListener('click', stopEngine);
+
+        // Keyboard Support for Buttons in Radiogroups
+        [sourceToggles, waveToggles, noiseToggles].forEach(group => {
+            group.forEach(btn => {
+                btn.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        btn.click();
+                    }
+                });
+            });
+        });
+
+        function updateUIStatus() {
+            if (AppState.isPlaying) {
+                statusDisplay.textContent = 'Audio Engine Active';
+                statusDisplay.classList.replace('text-red-400', 'text-green-400');
+            } else {
+                statusDisplay.textContent = 'Audio Engine Offline';
+                statusDisplay.classList.replace('text-green-400', 'text-red-400');
+            }
+        }
+
+        function getActiveDescription() {
+            if (AppState.source === 'oscillator') {
+                return `${AppState.wave} wave at ${AppState.pitch} Hertz${AppState.wave === 'square' ? ` with ${AppState.pwm} percent pulse width` : ''}`;
+            } else {
+                return `${AppState.noise} noise`;
+            }
+        }
+
+        function updateLiveRegion(text) {
+            ariaLiveRegion.textContent = text;
+        }
+
+        function resizeCanvases() {
+            // Adjust canvas internal resolution to match displayed CSS size for sharp rendering
+            const oscRect = canvasOsc.parentElement.getBoundingClientRect();
+            canvasOsc.width = oscRect.width;
+            canvasOsc.height = oscRect.height;
+            
+            const specRect = canvasSpec.parentElement.getBoundingClientRect();
+            canvasSpec.width = specRect.width;
+            canvasSpec.height = specRect.height;
+        }
+        
+        window.addEventListener('resize', resizeCanvases);
+        // Call once on load to set initial sizes correctly
+        setTimeout(resizeCanvases, 100);
+
+        function drawVisualizers() {
+            if (!analyser || !AppState.isPlaying) {
+                // If stopped, clear to flatline and stop loop
+                animFrameId = null;
+                
+                // Clear Scope
+                ctxOsc.fillStyle = '#1f2937';
+                ctxOsc.fillRect(0, 0, canvasOsc.width, canvasOsc.height);
+                ctxOsc.lineWidth = 2;
+                ctxOsc.strokeStyle = '#16fdfc';
+                ctxOsc.beginPath();
+                ctxOsc.moveTo(0, canvasOsc.height / 2);
+                ctxOsc.lineTo(canvasOsc.width, canvasOsc.height / 2);
+                ctxOsc.stroke();
+
+                // Clear FFT
+                ctxSpec.fillStyle = '#1f2937';
+                ctxSpec.fillRect(0, 0, canvasSpec.width, canvasSpec.height);
+                return;
+            }
+
+            animFrameId = requestAnimationFrame(drawVisualizers);
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArrayTime = new Uint8Array(bufferLength);
+            const dataArrayFreq = new Uint8Array(bufferLength);
+            
+            analyser.getByteTimeDomainData(dataArrayTime);
+            analyser.getByteFrequencyData(dataArrayFreq);
+
+            // 1. Draw Oscilloscope
+            ctxOsc.fillStyle = '#1f2937';
+            ctxOsc.fillRect(0, 0, canvasOsc.width, canvasOsc.height);
+            
+            ctxOsc.lineWidth = 2;
+            ctxOsc.strokeStyle = '#16fdfc';
+            ctxOsc.beginPath();
+
+            const sliceWidth = canvasOsc.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const v = dataArrayTime[i] / 128.0; // 0 to 2, mapped around 1
+                const y = v * canvasOsc.height / 2;
+
+                if (i === 0) {
+                    ctxOsc.moveTo(x, y);
+                } else {
+                    ctxOsc.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+            ctxOsc.lineTo(canvasOsc.width, canvasOsc.height / 2);
+            ctxOsc.stroke();
+
+            // 2. Draw Spectrum Analyzer
+            ctxSpec.fillStyle = '#1f2937';
+            ctxSpec.fillRect(0, 0, canvasSpec.width, canvasSpec.height);
+
+            // We only draw a portion of the bins (up to ~10kHz) for better visual focus
+            const visibleBins = Math.floor(bufferLength * 0.5); 
+            const barWidth = (canvasSpec.width / visibleBins) * 2.5;
+            let barHeight;
+            let xSpec = 0;
+
+            for (let i = 0; i < visibleBins; i++) {
+                barHeight = dataArrayFreq[i];
+
+                // Add a cool gradient color based on frequency
+                const hue = i / visibleBins * 360;
+                ctxSpec.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                
+                // Draw bar
+                ctxSpec.fillRect(xSpec, canvasSpec.height - barHeight / 255 * canvasSpec.height, barWidth, barHeight / 255 * canvasSpec.height);
+
+                xSpec += barWidth + 1;
+            }
+        }
+    </script>
+</body>
+</html>
